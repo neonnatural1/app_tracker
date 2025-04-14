@@ -31,10 +31,14 @@ def get_today():
 
 def get_total_usage(mode):
     now = datetime.now()
-    total = {}
+    totals = {}
 
     for date_str, apps in usage_log.items():
-        date = datetime.strptime(date_str, "%Y-%m-%d")
+        try:
+            date = datetime.strptime(date_str, "%Y-%m-%d")
+        except:
+            continue
+
         delta = (now - date).days
 
         if (mode == "daily" and delta == 0) or \
@@ -42,9 +46,12 @@ def get_total_usage(mode):
            (mode == "monthly" and delta <= 30):
 
             for app, secs in apps.items():
-                total[app] = total.get(app, 0) + secs
+                totals[app] = totals.get(app, 0) + secs
 
-    return ", ".join(f"{app}: {seconds_to_str(secs)}" for app, secs in total.items())
+    if not totals:
+        return "  • No data yet"
+
+    return "\n" + "\n".join(f"  • {app}: {seconds_to_str(secs)}" for app, secs in totals.items())
 
 
 def save_usage():
@@ -101,8 +108,6 @@ root = ctk.CTk()
 root.title("App Usage Tracker")
 root.geometry("420x480")
 
-app_labels = {}
-
 # Title
 ctk.CTkLabel(
     root, text="Tracked App Usage",
@@ -110,9 +115,14 @@ ctk.CTkLabel(
     text_color="#ffffff"
 ).pack(pady=(20, 10))
 
+apps_frame = ctk.CTkFrame(root, fg_color="transparent")
+apps_frame.pack(pady=(10, 0))
+
+app_labels = {}
+
 # Tracked app list
 for app in TRACKED_APPS:
-    frame = ctk.CTkFrame(root, fg_color="transparent")
+    frame = ctk.CTkFrame(apps_frame, fg_color="transparent")
     frame.pack(pady=5, padx=20, fill="x")
 
     name_label = ctk.CTkLabel(frame, text=app, width=200, anchor="w", font=("Segoe UI", 12))
@@ -126,6 +136,49 @@ for app in TRACKED_APPS:
 # Summary Frame
 summary_frame = ctk.CTkFrame(root, fg_color="transparent")
 summary_frame.pack(pady=(30, 10), padx=20, fill="x")
+
+# Collapsible section frames
+summary_data = {
+    "daily": {"title": "🕒 Today", "expanded": False},
+    "weekly": {"title": "📆 This Week", "expanded": False},
+    "monthly": {"title": "📅 This Month", "expanded": False},
+}
+
+summary_widgets = {}
+
+def toggle_section(section_key):
+    data = summary_data[section_key]
+    data["expanded"] = not data["expanded"]
+
+    btn = summary_widgets[section_key]["button"]
+    lbl = summary_widgets[section_key]["label"]
+
+    if data["expanded"]:
+        btn.configure(text=f"{data['title']} ▲")
+        lbl.pack()
+    else:
+        btn.configure(text=f"{data['title']} ▼")
+        lbl.pack_forget()
+
+
+for key, data in summary_data.items():
+    # Frame per section
+    section_frame = ctk.CTkFrame(summary_frame, fg_color="transparent")
+    section_frame.pack(fill="x", pady=2)
+
+    # Toggle button
+    def make_toggle(k):
+        return lambda: toggle_section(k)
+
+    btn = ctk.CTkButton(section_frame, text=f"{data['title']} ▼", width=200, command=make_toggle(key))
+    btn.pack()
+
+    # Label for that section (initially hidden)
+    lbl = ctk.CTkLabel(section_frame, text="", justify="left", anchor="w", font=("Segoe UI", 12))
+    lbl.pack(pady=(0, 5))
+    lbl.pack_forget()
+
+    summary_widgets[key] = {"button": btn, "label": lbl}
 
 def open_usage_graph(period="weekly"):
     selected_app = app_selector.get()
@@ -170,6 +223,51 @@ button_frame.pack(pady=10)
 ctk.CTkButton(button_frame, text="📆 Weekly Graph", command=lambda: open_usage_graph("weekly")).pack(side="left", padx=10)
 ctk.CTkButton(button_frame, text="📅 Monthly Graph", command=lambda: open_usage_graph("monthly")).pack(side="left", padx=10)
 
+# App Manager Frame
+manage_frame = ctk.CTkFrame(root, fg_color="transparent")
+manage_frame.pack(pady=(10, 10))
+
+entry = ctk.CTkEntry(manage_frame, placeholder_text="Enter app name (e.g., notepad.exe)", width=250)
+entry.grid(row=0, column=0, padx=5)
+
+def add_app():
+    new_app = entry.get().strip().lower()
+    if not new_app or new_app in TRACKED_APPS:
+        return
+    TRACKED_APPS[new_app] = 0
+
+    # Create GUI row
+    frame = ctk.CTkFrame(apps_frame, fg_color="transparent")
+    frame.pack(pady=5, padx=20, fill="x")
+
+    name_label = ctk.CTkLabel(frame, text=new_app, width=200, anchor="w", font=("Segoe UI", 12))
+    name_label.pack(side="left", padx=(10, 0))
+
+    label = ctk.CTkLabel(frame, text="0s", width=100, anchor="e", font=("Segoe UI", 12))
+    label.pack(side="right", padx=(0, 10))
+
+    app_labels[new_app] = label
+
+    # Update dropdown
+    app_selector.configure(values=list(TRACKED_APPS.keys()))
+    entry.delete(0, 'end')
+
+def remove_app():
+    target = entry.get().strip().lower()
+    if target not in TRACKED_APPS:
+        return
+    del TRACKED_APPS[target]
+    label = app_labels.pop(target, None)
+    if label:
+        label.master.destroy()  # remove GUI row
+
+    # Update dropdown
+    app_selector.configure(values=list(TRACKED_APPS.keys()))
+    entry.delete(0, 'end')
+
+ctk.CTkButton(manage_frame, text="Add", command=add_app).grid(row=0, column=1, padx=5)
+ctk.CTkButton(manage_frame, text="Remove", command=remove_app).grid(row=0, column=2, padx=5)
+
 summary_label = ctk.CTkLabel(
     summary_frame,
     text="",
@@ -182,17 +280,9 @@ summary_label.pack()
 # Update summary every second
 def update_summary():
     while True:
-        daily = get_total_usage("daily")
-        weekly = get_total_usage("weekly")
-        monthly = get_total_usage("monthly")
-
-        summary_label.configure(
-            text=(
-                f"🕒 Today: {daily}\n"
-                f"📆 This Week: {weekly}\n"
-                f"📅 This Month: {monthly}"
-            )
-        )
+        for key in summary_data:
+            if summary_data[key]["expanded"]:
+                summary_widgets[key]["label"].configure(text=get_total_usage(key))
         time.sleep(1)
 
 def on_exit():
