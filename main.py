@@ -70,7 +70,8 @@ def update_times():
             if app in running:
                 TRACKED_APPS[app] += REFRESH_RATE
         time.sleep(REFRESH_RATE)
-        update_gui()
+        if app_labels:
+            update_gui()
 
         if time.time() % 60 < REFRESH_RATE:  # once per minute
             save_usage()
@@ -92,56 +93,71 @@ def seconds_to_str(seconds):
 
 def update_gui():
     for app, label in app_labels.items():
-        label["text"] = seconds_to_str(TRACKED_APPS[app])
+        label.configure(text=seconds_to_str(TRACKED_APPS[app]))
 
-# GUI
+# GUI Setup
 root = ctk.CTk()
 root.title("App Usage Tracker")
-root.geometry("300x200")
+root.geometry("420x480")
 
 app_labels = {}
 
-ctk.CTkLabel(root, text="Tracked App Usage", font=("Helvetica", 14, "bold")).pack(pady=10)
+# Title
+ctk.CTkLabel(
+    root, text="Tracked App Usage",
+    font=("Segoe UI", 20, "bold"),
+    text_color="#ffffff"
+).pack(pady=(20, 10))
 
+# Tracked app list
 for app in TRACKED_APPS:
-    frame = ctk.CTkFrame(root)
-    frame.pack()
-    ctk.CTkLabel(frame, text=app, width=15, anchor="w").pack(side="left")
-    label = ctk.CTkLabel(frame, text="0m 0s", width=10)
-    label.pack(side="left")
+    frame = ctk.CTkFrame(root, fg_color="transparent")
+    frame.pack(pady=5, padx=20, fill="x")
+
+    name_label = ctk.CTkLabel(frame, text=app, width=200, anchor="w", font=("Segoe UI", 12))
+    name_label.pack(side="left", padx=(10, 0))
+
+    label = ctk.CTkLabel(frame, text="0s", width=100, anchor="e", font=("Segoe UI", 12))
+    label.pack(side="right", padx=(0, 10))
+
     app_labels[app] = label
 
 # Summary Frame
-summary_frame = ctk.CTkFrame(root)
-summary_frame.pack(pady=10)
+summary_frame = ctk.CTkFrame(root, fg_color="transparent")
+summary_frame.pack(pady=(30, 10), padx=20, fill="x")
 
-def update_summary():
-    daily = get_total_usage("daily")
-    weekly = get_total_usage("weekly")
-    monthly = get_total_usage("monthly")
-
-    summary_label["text"] = (
-        f"🕒 Today: {daily}\n"
-        f"📆 This Week: {weekly}\n"
-        f"📅 This Month: {monthly}"
-    )
-
-summary_label = ctk.CTkLabel(summary_frame, text="", justify="left", font=("Helvetica", 10))
+summary_label = ctk.CTkLabel(
+    summary_frame,
+    text="",
+    justify="left",
+    font=("Segoe UI", 12),
+    anchor="w",
+)
 summary_label.pack()
 
-# Update summary every 30 seconds
-def auto_update_summary():
+# Update summary every second
+def update_summary():
     while True:
-        update_summary()
-        time.sleep(30)
+        daily = get_total_usage("daily")
+        weekly = get_total_usage("weekly")
+        monthly = get_total_usage("monthly")
 
-threading.Thread(target=auto_update_summary, daemon=True).start()
-threading.Thread(target=update_times, daemon=True).start()
+        summary_label.configure(
+            text=(
+                f"🕒 Today: {daily}\n"
+                f"📆 This Week: {weekly}\n"
+                f"📅 This Month: {monthly}"
+            )
+        )
+        time.sleep(1)
 
 def on_exit():
     save_usage()  # store current session
     root.destroy()
 
 root.protocol("WM_DELETE_WINDOW", on_exit)
+
+threading.Thread(target=update_summary, daemon=True).start()
+threading.Thread(target=update_times, daemon=True).start()
 
 root.mainloop()
