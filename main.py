@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from datetime import timedelta
 import customtkinter as ctk
+import matplotlib.pyplot as plt
 ctk.set_appearance_mode("Dark")        # or "Light"
 ctk.set_default_color_theme("blue")    # or "green", "dark-blue"
 
@@ -125,6 +126,49 @@ for app in TRACKED_APPS:
 # Summary Frame
 summary_frame = ctk.CTkFrame(root, fg_color="transparent")
 summary_frame.pack(pady=(30, 10), padx=20, fill="x")
+
+def open_usage_graph(period="weekly"):
+    selected_app = app_selector.get()
+    if not selected_app:
+        return
+
+    now = datetime.now()
+    days = 7 if period == "weekly" else 30
+
+    labels = []
+    values = []
+
+    for i in range(days - 1, -1, -1):
+        day = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+        labels.append(day[5:])  # Show MM-DD
+
+        day_usage = usage_log.get(day, {}).get(selected_app, 0)
+        values.append(round(day_usage / 3600, 2))  # convert to hours
+
+    plt.figure(figsize=(9, 4))
+    plt.bar(labels, values)
+    plt.title(f"{period.capitalize()} Usage for {selected_app}")
+    plt.ylabel("Hours")
+    plt.xlabel("Day")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+# App selection dropdown
+app_selector = ctk.CTkOptionMenu(
+    root,
+    values=list(TRACKED_APPS.keys()),
+    width=200
+)
+app_selector.pack(pady=(10, 5))
+app_selector.set(list(TRACKED_APPS.keys())[0])  # default selection
+
+# Buttons
+button_frame = ctk.CTkFrame(root, fg_color="transparent")
+button_frame.pack(pady=10)
+
+ctk.CTkButton(button_frame, text="📆 Weekly Graph", command=lambda: open_usage_graph("weekly")).pack(side="left", padx=10)
+ctk.CTkButton(button_frame, text="📅 Monthly Graph", command=lambda: open_usage_graph("monthly")).pack(side="left", padx=10)
 
 summary_label = ctk.CTkLabel(
     summary_frame,
